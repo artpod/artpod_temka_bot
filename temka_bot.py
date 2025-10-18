@@ -79,30 +79,72 @@ def check_rate_limit(user_id: int) -> tuple[bool, bool]:
 
 
 async def forward_any_message(msg: Message) -> ForwardResult:
-    """Copy message to the target channel with a header showing author info."""
     u = msg.from_user
     if not u:
         return ForwardResult(False, "Unknown sender")
 
     author = tg_user_link(u.id, u.username, u.full_name)
-
-    header = (
-        f"\n{hbold('Надійшла темка')}\n"
+    prefix = (
+        f"{hbold('Надійшла темка')}\n"
         f"Від: {author}\n"
-        f"User ID: <code>{u.id}</code>\n"
+        f"User ID: <code>{u.id}</code>\n\n"
     )
 
     try:
-        # 1) send a header post (so admin sees author regardless of privacy settings)
-        await bot.send_message(CHANNEL_ID, header)
+        # якщо це звичайний текст
+        if msg.text:
+            await bot.send_message(CHANNEL_ID, prefix + msg.text)
+            return ForwardResult(True)
 
-        # 2) copy the original message preserving media/captions
-        await msg.copy_to(CHANNEL_ID)
+        # якщо це фото з підписом
+        elif msg.photo:
+            await bot.send_photo(
+                CHANNEL_ID,
+                msg.photo[-1].file_id,
+                caption=(prefix + (msg.caption or "")),
+            )
+            return ForwardResult(True)
 
-        return ForwardResult(True)
-    except Exception as e:  # noqa: BLE001
+        # якщо це документ
+        elif msg.document:
+            await bot.send_document(
+                CHANNEL_ID,
+                msg.document.file_id,
+                caption=(prefix + (msg.caption or "")),
+            )
+            return ForwardResult(True)
+
+        # якщо це відео
+        elif msg.video:
+            await bot.send_video(
+                CHANNEL_ID,
+                msg.video.file_id,
+                caption=(prefix + (msg.caption or "")),
+            )
+            return ForwardResult(True)
+
+        # якщо голосове
+        elif msg.voice:
+            await bot.send_voice(
+                CHANNEL_ID,
+                msg.voice.file_id,
+                caption=(prefix + (msg.caption or "")),
+            )
+            return ForwardResult(True)
+
+        # якщо нічого з вище
+        else:
+            # fallback: просто текст з типом
+            await bot.send_message(
+                CHANNEL_ID,
+                prefix + f"(тип контенту: {msg.content_type})"
+            )
+            return ForwardResult(True)
+
+    except Exception as e:
         logger.exception("Forward failed")
         return ForwardResult(False, str(e))
+
 
 
 @dp.message(CommandStart())
